@@ -1,10 +1,11 @@
 mod config;
+mod event_handler;
 
 use eros::Context;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 use twilight_gateway::{
-    Config as GatewayConfig, Event, EventTypeFlags, Intents, Shard, ShardId, StreamExt,
+    Config as GatewayConfig, EventTypeFlags, Intents, Shard, ShardId, StreamExt,
 };
 use twilight_http::Client as HttpClient;
 
@@ -39,15 +40,11 @@ async fn main() -> eros::Result<()> {
 
         let http = Arc::clone(&http);
         tokio::spawn(async move {
-            if let Err(err) = handle_event(http, event).await {
+            if let Err(err) = event_handler::handle(http, event).await {
                 error!(?err, "event handling blew up");
             }
         });
     }
 
-    Ok(())
-}
-
-async fn handle_event(_http: Arc<HttpClient>, _event: Event) -> eros::Result<()> {
     Ok(())
 }
