@@ -1,5 +1,6 @@
 mod config;
 mod event_handler;
+mod storage;
 
 use eros::Context;
 use std::sync::Arc;
@@ -21,6 +22,7 @@ async fn main() -> eros::Result<()> {
     let cfg = config::Config::from_env().context("starting bot")?;
     info!(guild_id = cfg.guild_id, github_org = %cfg.github_org, "starting finix-bot");
 
+    let storage = Arc::new(storage::Storage::connect(&cfg.database_url).await?);
     let http = Arc::new(HttpClient::new(cfg.discord_token.clone()));
 
     let intents = Intents::GUILDS | Intents::GUILD_MEMBERS;
@@ -39,8 +41,9 @@ async fn main() -> eros::Result<()> {
         };
 
         let http = Arc::clone(&http);
+        let storage = Arc::clone(&storage);
         tokio::spawn(async move {
-            if let Err(err) = event_handler::handle(http, event).await {
+            if let Err(err) = event_handler::handle(http, storage, event).await {
                 error!(?err, "event handling blew up");
             }
         });
