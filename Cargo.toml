@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 tokio = "1"
-serenity = "0.12"
+twilight = "0.17"
