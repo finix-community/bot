@@ -16,13 +16,13 @@ pub struct Config {
 }
 
 fn require(key: &str) -> eros::Result<String> {
-    env::var(key).with_context(|| format!("missing environment variable: {key}"))
+    Ok(env::var(key).with_context(|| format!("missing environment variable: {key}"))?)
 }
 
 impl Config {
     pub fn from_env() -> eros::Result<Self> {
-        let guild_id: u64 = require("GUILD_ID")?
-            .parse()
+        let guild_id = require("GUILD_ID")?
+            .parse::<u64>()
             .context("GUILD_ID must be a number (snowflake)")?;
 
         Ok(Self {

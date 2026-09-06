@@ -7,5 +7,9 @@ edition = "2024"
 eros = { version = "0.7", features = ["tracing"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
+futures-util = "0.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
 twilight = "0.17"
+twilight-gateway = "0.17"
+twilight-http = "0.17"
