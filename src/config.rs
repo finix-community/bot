@@ -11,6 +11,7 @@ pub struct Config {
     pub guild_id: u64,
     pub database_url: String,
     pub resync_interval_secs: u64,
+    pub oauth_listen_addr: String,
 }
 
 fn require(key: &str) -> eros::Result<String> {
@@ -36,6 +37,10 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(3600),
+            oauth_listen_addr: env::var("OAUTH_LISTEN_ADDR").unwrap_or_else(|_| {
+                let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+                format!("0.0.0.0:{port}")
+            }),
         })
     }
 }
