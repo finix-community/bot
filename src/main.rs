@@ -1,4 +1,5 @@
 mod config;
+mod discord_identity;
 mod event_handler;
 mod oauth_server;
 mod storage;

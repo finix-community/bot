@@ -79,11 +79,11 @@ async fn discord_callback(
 
 async fn handle_callback(state: Arc<AppState>, params: CallbackParams) -> eros::Result<()> {
     let client = discord_oauth_client(&state.config)?;
-    let http_client = oauth2::reqwest::Client::new();
+    let oauth_http_client = oauth2::reqwest::Client::new();
 
     let token = client
         .exchange_code(AuthorizationCode::new(params.code))
-        .request_async(&http_client)
+        .request_async(&oauth_http_client)
         .await
         .context("exchanging oauth code for token")?;
 
@@ -93,7 +93,15 @@ async fn handle_callback(state: Arc<AppState>, params: CallbackParams) -> eros::
         .map(|t| t.secret().clone())
         .unwrap_or_default();
 
-    let _ = (access_token, refresh_token);
+    let identity = crate::discord_identity::fetch(&access_token)
+        .await
+        .context("fetching verified discord identity")?;
+
+    state
+        .storage
+        .upsert_link(identity.discord_id, &identity.github_login, &refresh_token)
+        .await
+        .context("saving linked account")?;
 
     Ok(())
 }
