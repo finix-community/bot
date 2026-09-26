@@ -24,6 +24,16 @@ async fn main() -> eros::Result<()> {
 
     let cfg = config::Config::from_env().context("starting bot")?;
     info!(guild_id = cfg.guild_id, github_org = %cfg.github_org, "starting finix-bot");
+    if cfg.repo_role_map.is_empty() {
+        warn!(
+            "REPO_ROLE_MAP is empty or unset; no repository will grant a Discord role until it's configured"
+        );
+    } else {
+        info!(
+            repo_count = cfg.repo_role_map.len(),
+            "loaded repo -> role mapping"
+        );
+    }
 
     let storage = Arc::new(storage::Storage::connect(&cfg.database_url).await?);
     let http = Arc::new(HttpClient::new(cfg.discord_token.clone()));
