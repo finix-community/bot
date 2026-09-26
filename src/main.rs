@@ -29,10 +29,10 @@ async fn main() -> eros::Result<()> {
     let http = Arc::new(HttpClient::new(cfg.discord_token.clone()));
 
     {
-        let app_state = Arc::new(oauth_server::AppState {
-            config: cfg.clone(),
-            storage: Arc::clone(&storage),
-        });
+        let app_state = Arc::new(oauth_server::AppState::new(
+            cfg.clone(),
+            Arc::clone(&storage),
+        ));
         let listen_addr = cfg.oauth_listen_addr.clone();
         tokio::spawn(async move {
             let router = oauth_server::router(app_state);

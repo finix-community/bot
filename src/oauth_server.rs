@@ -3,21 +3,47 @@ use crate::storage::Storage;
 use axum::{
     Router,
     extract::{Query, State},
-    response::Html,
+    response::{Html, IntoResponse, Redirect, Response},
     routing::get,
 };
-use eros::Context;
+use eros::{Context, bail};
 use oauth2::{
     AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointNotSet, EndpointSet,
     RedirectUrl, Scope, TokenUrl, TokenResponse, basic::BasicClient,
 };
 use serde::Deserialize;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::{Duration, Instant};
 use tracing::warn;
+
+/// How long an issued CSRF state token remains valid. Anyone who hasn't
+/// completed the Discord authorize step within this window has to start over.
+const STATE_TTL: Duration = Duration::from_secs(10 * 60);
 
 pub struct AppState {
     pub config: Config,
     pub storage: Arc<Storage>,
+    /// CSRF state tokens we've handed out via `/oauth/discord/start`, along
+    /// with when they were issued. A callback is only honored if its `state`
+    /// is found (and then removed) here, which is what makes it a one-time,
+    /// server-verified value rather than data an attacker could forge.
+    pending_states: StdMutex<HashMap<String, Instant>>,
+}
+
+impl AppState {
+    pub fn new(config: Config, storage: Arc<Storage>) -> Self {
+        Self {
+            config,
+            storage,
+            pending_states: StdMutex::new(HashMap::new()),
+        }
+    }
+}
+
+fn prune_expired(pending: &mut HashMap<String, Instant>) {
+    let now = Instant::now();
+    pending.retain(|_, issued_at| now.duration_since(*issued_at) < STATE_TTL);
 }
 
 type DiscordOAuthClient =
@@ -26,7 +52,6 @@ type DiscordOAuthClient =
 #[derive(Deserialize)]
 struct CallbackParams {
     code: String,
-    #[allow(dead_code)]
     state: String,
 }
 
@@ -57,8 +82,34 @@ pub fn build_auth_url(client: &DiscordOAuthClient) -> (String, CsrfToken) {
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
+        .route("/oauth/discord/start", get(discord_start))
         .route("/oauth/discord/callback", get(discord_callback))
         .with_state(state)
+}
+
+/// Entry point users hit to begin linking their account
+async fn discord_start(State(state): State<Arc<AppState>>) -> Response {
+    let client = match discord_oauth_client(&state.config) {
+        Ok(client) => client,
+        Err(err) => {
+            warn!(?err, "building discord oauth client failed");
+            return Html("<h1>Something went wrong</h1><p>Try again later.</p>".to_string())
+                .into_response();
+        }
+    };
+
+    let (auth_url, csrf) = build_auth_url(&client);
+
+    {
+        let mut pending = state
+            .pending_states
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        prune_expired(&mut pending);
+        pending.insert(csrf.secret().clone(), Instant::now());
+    }
+
+    Redirect::to(&auth_url).into_response()
 }
 
 async fn discord_callback(
@@ -78,6 +129,17 @@ async fn discord_callback(
 }
 
 async fn handle_callback(state: Arc<AppState>, params: CallbackParams) -> eros::Result<()> {
+    {
+        let mut pending = state
+            .pending_states
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        prune_expired(&mut pending);
+        if pending.remove(&params.state).is_none() {
+            bail!("oauth callback presented an unknown, expired, or already-used state token");
+        }
+    }
+
     let client = discord_oauth_client(&state.config)?;
     let oauth_http_client = oauth2::reqwest::Client::new();
 
